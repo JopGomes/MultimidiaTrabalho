@@ -1,152 +1,102 @@
-import os
+import sys
+from collections import Counter
 from decimal import Decimal, getcontext
 
-# Configura a precisão desejada
-getcontext().prec = 1000
-
+getcontext().prec = 10000000000
 
 def read_pgm(filename):
     with open(filename, 'r') as f:
-        assert f.readline().strip() == 'P2' 
-        # Skip comments
-        line = f.readline().strip()
+        assert f.readline() == 'P2\n'
+        # Ignora comentários
+        line = f.readline()
         while line.startswith('#'):
-            line = f.readline().strip()
-        width, height = map(int, line.split())
-        max_gray = int(f.readline().strip())
-        pixels = []
-        for _ in range(height):
-            row = list(map(int, f.readline().strip().split()))
-            pixels.append(row)
-    return width, height, max_gray, pixels
-
-def write_pgm(filename, width, height, max_gray, pixels):
-    with open(filename, 'w') as f:
-        f.write("P2\n")
-        f.write(f"{width} {height}\n")
-        f.write(f"{max_gray}\n")
-        for row in pixels:
-            f.write(" ".join(map(str, row)) + "\n")
-
-class ArithmeticEncoder:
-    def __init__(self, freq_table):
-        self.low = Decimal(0.0)
-        self.high = Decimal(1000.0)
-        self.freq_table = freq_table
-        self.total_freq = sum(freq_table.values())
-
-    def encode_symbol(self, symbol):
-        range_ = self.high - self.low
-        # print(f"high: {self.high:.3f}",f"low:{self.low:.3f}")
-        self.high = self.low + range_ * self.cumulative_freq(symbol, True)
-        self.low = self.low + range_ * self.cumulative_freq(symbol, False)
-
-    def cumulative_freq(self, symbol, high):
-        cum_freq = 0
-        for key, freq in self.freq_table.items():
-            if key == symbol:
-                return Decimal ( (cum_freq + freq) / self.total_freq if high else cum_freq / self.total_freq) # x(n) ou x(n-1)
-            cum_freq += freq
-        return Decimal(1.0)
-
-    def get_encoded_value(self):
-        return (self.low + self.high) / 2
-
-def encode_image(pixels):
-    freq_table = {i: 0 for i in range(256)}
-    for row in pixels:
-        for pixel in row:
-            freq_table[pixel] += 1
-
-    encoder = ArithmeticEncoder(freq_table)
-    for row in pixels:
-        for pixel in row:
-            encoder.encode_symbol(pixel)
-    return encoder.get_encoded_value(), freq_table
-
-def save_codestream(filename, value, freq_table):
-    with open(filename, 'w') as f:
-        f.write(f"{value}\n")
-        for key, freq in freq_table.items():
-            f.write(f"{key} {freq}\n")
-
-class ArithmeticDecoder:
-    def __init__(self, encoded_value, freq_table):
-        self.value = encoded_value
-        self.low = Decimal(0.0)
-        self.high = Decimal(1000.0)
-        self.freq_table = freq_table
-        self.total_freq = sum(freq_table.values())
-
-    def decode_symbol(self):
-        range_ = self.high - self.low
-        if(range_ != 0):
-            scaled_value = (self.value - self.low) / range_
-            for symbol in range(256):
-                if self.cumulative_freq(symbol, False) <= scaled_value < self.cumulative_freq(symbol, True):
-                    self.high = self.low + range_ * self.cumulative_freq(symbol, True)
-                    self.low = self.low + range_ * self.cumulative_freq(symbol, False)
-                    return symbol
-        return 255  # In case something goes wrong
-
-    def cumulative_freq(self, symbol, high):
-        cum_freq = 0
-        for key, freq in self.freq_table.items():
-            if key == symbol:
-                return Decimal( (cum_freq + freq) / self.total_freq if high else cum_freq / self.total_freq)
-            cum_freq += freq
-        return Decimal(1.0)
-
-def decode_image(encoded_value, freq_table, width, height):
-    decoder = ArithmeticDecoder(encoded_value, freq_table)
-    pixels = []
-    for _ in range(height):
-        row = []
-        for _ in range(width):
-            row.append(decoder.decode_symbol())
-        pixels.append(row)
-    return pixels
-
-def load_codestream(filename):
-    with open(filename, 'r') as f:
-        encoded_value = Decimal(f.readline().strip())
-        freq_table = {}
+            line = f.readline()
+        width, height = [int(i) for i in line.split()]
+        max_val = int(f.readline())
+        data = []
         for line in f:
-            key, freq = map(int, line.strip().split())
-            freq_table[key] = freq
-    return encoded_value, freq_table
+            if not line.startswith('#'):
+                data.extend([int(i) for i in line.split()])
+        return (width, height, max_val, data)
 
+def write_pgm(filename, width, height, max_val, data):
+    with open(filename, 'w') as f:
+        f.write('P2\n')
+        f.write(f'{width} {height}\n')
+        f.write(f'{max_val}\n')
+        line_len = 0
+        for pixel in data:
+            f.write(f'{pixel} ')
+            line_len += 1
+            if line_len >= 17:
+                f.write('\n')
+                line_len = 0
 
-def compress_image(input_filename, output_codestream_filename):
-    width, height, max_gray, pixels = read_pgm(input_filename)
-    encoded_value, freq_table = encode_image(pixels)
-    save_codestream(output_codestream_filename, encoded_value, freq_table)
+def calculate_frequency(data):
+    freq = Counter(data)
+    max_val = max(data)
+    return [freq[i] if i in freq else 0 for i in range(max_val + 1)]
 
-def decompress_image(input_codestream_filename, output_filename, width, height, max_gray):
-    encoded_value, freq_table = load_codestream(input_codestream_filename)
-    pixels = decode_image(encoded_value, freq_table, width, height)
-    write_pgm(output_filename, width, height, max_gray, pixels)
+def arithmetic_encode(data, freq):
+    cumulative_freq = [0] * (len(freq) + 1)
+    for i in range(1, len(freq) + 1):
+        cumulative_freq[i] = cumulative_freq[i-1] + freq[i-1]
+    
+    total = cumulative_freq[-1]
+    low, high = Decimal(0), Decimal(1)
+    for symbol in data:
+        range_ = high - low
+        high = low + range_ * cumulative_freq[symbol+1] / total
+        low = low + range_ * cumulative_freq[symbol] / total
+    
+    return (low + high) /2
 
-def calculate_compression_ratio(original_file, codestream_file):
-    original_size = os.path.getsize(original_file)
-    codestream_size = os.path.getsize(codestream_file)
-    return original_size / codestream_size
+def arithmetic_decode(encoded_value, freq, length):
+    cumulative_freq = [0] * (len(freq) + 1)
+    for i in range(1, len(freq) + 1):
+        cumulative_freq[i] = cumulative_freq[i-1] + freq[i-1]
+    
+    total = cumulative_freq[-1]
+    data = []
+    low, high = Decimal(0), Decimal(1)
+    for _ in range(length):
+        value = (encoded_value - low) / (high - low) if high != low else 0.0
+        for symbol in range(len(freq)):
+            if cumulative_freq[symbol] / total <= value < cumulative_freq[symbol+1] / total:
+                data.append(symbol)
+                range_ = high - low
+                high = low + range_ * cumulative_freq[symbol+1] / total
+                low = low + range_ * cumulative_freq[symbol] / total
+                break
+    return data
 
-# Exemplo de uso:
-images = ["lena.ascii.pgm", "baboon_ascii.pgm", "quadrado_ascii.pgm"]
-for image in images:
-    codestream_file = "./output/"+image.replace(".pgm", "_codestream.txt")
-    rec_file = "./output/"+image.replace(".pgm", "-rec.pgm")
+def main():
+    input_files = ['lena.ascii.pgm', 'baboon_ascii.pgm', 'quadrado_ascii.pgm']
+    output_files = ['./output/lena_ascii-rec.pgm', './output/baboon_ascii-rec.pgm', './output/quadrado_ascii-rec.pgm']
 
-    # Compressão
-    compress_image(image, codestream_file)
+    for input_file, output_file in zip(input_files, output_files):
+        width, height, max_val, data = read_pgm(input_file)
+        freq = calculate_frequency(data)
 
-    # Leitura da largura, altura e max_gray para descompressão
-    width, height, max_gray, _ = read_pgm(image)
+        # Encoding
+        encoded_value = arithmetic_encode(data, freq)
+        with open(input_file.replace('.pgm', '.encoded'), 'w') as f:
+            f.write(str(encoded_value))
 
-    # Descompressão
-    decompress_image(codestream_file, rec_file, width, height, max_gray)
+        # Read encoded value for decoding
+        with open(input_file.replace('.pgm', '.encoded'), 'r') as f:
+            encoded_value = float(f.read())
+            encoded_value = Decimal(encoded_value)
 
-    # Cálculo da taxa de compressão
-    compression_ratio = calculate_compression_ratio(image, codestream_file)
-    print(f"Taxa de compressão para {image}: {compression_ratio:.2f}")
+        # Decoding
+        decoded_data = arithmetic_decode(encoded_value, freq, len(data))
+        write_pgm(output_file, width, height, max_val, decoded_data)
+
+        # Compression Ratio
+        original_size = len(data) * 8  # in bits
+        compressed_size = len(str(encoded_value)) * 8  # in bits
+        compression_ratio = original_size / compressed_size
+        print(f'{input_file} compression ratio: {compression_ratio:.2f}')
+
+if __name__ == '__main__':
+    main()
