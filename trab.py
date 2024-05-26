@@ -31,13 +31,13 @@ def write_pgm(filename, width, height, max_gray, pixels):
 class ArithmeticEncoder:
     def __init__(self, freq_table):
         self.low = Decimal(0.0)
-        self.high = Decimal(1.0)
+        self.high = Decimal(1000.0)
         self.freq_table = freq_table
         self.total_freq = sum(freq_table.values())
 
     def encode_symbol(self, symbol):
         range_ = self.high - self.low
-        print(f"high: {self.high:.3f}",f"low:{self.low:.3f}")
+        # print(f"high: {self.high:.3f}",f"low:{self.low:.3f}")
         self.high = self.low + range_ * self.cumulative_freq(symbol, True)
         self.low = self.low + range_ * self.cumulative_freq(symbol, False)
 
@@ -74,7 +74,7 @@ class ArithmeticDecoder:
     def __init__(self, encoded_value, freq_table):
         self.value = encoded_value
         self.low = Decimal(0.0)
-        self.high = Decimal(1.0)
+        self.high = Decimal(1000.0)
         self.freq_table = freq_table
         self.total_freq = sum(freq_table.values())
 
